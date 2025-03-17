@@ -1,10 +1,22 @@
 import logging
 import azure.functions as func
-import openai
 import json
 import os
 import random
 from typing import Dict, List, TypedDict
+from openai import AzureOpenAI, OpenAIError  # Azure OpenAI client
+
+# Azure OpenAI config
+ENDPOINT = os.environ["AZURE_OPENAI_ENDPOINT"]
+API_KEY = os.environ["AZURE_OPENAI_API_KEY"]
+API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
+
+# Initialize Azure OpenAI client
+client = AzureOpenAI(
+    azure_endpoint=ENDPOINT,
+    api_key=API_KEY,
+    api_version=API_VERSION,
+)
 
 class ServiceOption(TypedDict):
     service: str
@@ -97,31 +109,25 @@ ACRONYM_MAPPING = {
 
 
 def validate_flow_structure(architecture_data: dict) -> bool:
-    """Validate that the architecture data has all required elements for React Flow"""
     try:
-        # Check basic structure
         if not all(key in architecture_data for key in ['architecture', 'services', 'connections', 'missingServices']):
             raise ValueError("Missing required top-level keys")
 
-        # Validate services exist and are strings
         if not isinstance(architecture_data['services'], list):
             raise ValueError("Services must be a list")
         if not all(isinstance(s, str) for s in architecture_data['services']):
             raise ValueError("All services must be strings")
 
-        # Validate connections have valid from/to references
         if not isinstance(architecture_data['connections'], list):
             raise ValueError("Connections must be a list")
-        
+
         service_names = set(architecture_data['services'])
         for conn in architecture_data['connections']:
             if not isinstance(conn, dict) or 'from' not in conn or 'to' not in conn:
                 raise ValueError("Each connection must have 'from' and 'to' properties")
-            # Verify connection references existing services
             if conn['from'] not in service_names or conn['to'] not in service_names:
                 raise ValueError(f"Connection references non-existent service: {conn}")
 
-        # Validate missing services structure
         missing_services_count = len(architecture_data['missingServices'])
         if missing_services_count not in [3, 5, 7]:
             raise ValueError(f"Invalid number of missing services: {missing_services_count}")
@@ -131,8 +137,7 @@ def validate_flow_structure(architecture_data: dict) -> bool:
                 raise ValueError("Missing service missing required fields")
             if not isinstance(ms['options'], list) or len(ms['options']) != 4:
                 raise ValueError("Each missing service must have exactly 4 options")
-            
-            # Validate each option has required fields for React Flow nodes
+
             for opt in ms['options']:
                 if not all(key in opt for key in ['service', 'rating', 'explanation', 'isCorrect', 'isOptimal']):
                     raise ValueError("Service option missing required fields")
@@ -144,9 +149,6 @@ def validate_flow_structure(architecture_data: dict) -> bool:
         return False
 
 def generate_architecture(difficulty: str) -> Architecture:
-    openai.api_key = os.environ['OPENAI_API_KEY']
-    
-    # Determine the number of missing services based on difficulty
     if difficulty.upper() == "BEGINNER":
         missing_services_count = 3
     elif difficulty.upper() == "INTERMEDIATE":
@@ -154,33 +156,32 @@ def generate_architecture(difficulty: str) -> Architecture:
     elif difficulty.upper() == "ADVANCED":
         missing_services_count = 7
     else:
-        missing_services_count = 3  # Default to beginner if unknown difficulty
-    
+        missing_services_count = 3
+
     try:
-        completion = openai.chat.completions.create(
+        completion = client.chat.completions.create(
             model="gpt-4o",
             messages=[
                 {
-                "role": "system",
-                "content": f"""You are an Azure architecture expert. Generate realistic Azure architecture scenarios.
-                
-                For each architecture:
-                - Provide a clear name (e.g., "Serverless Data Pipeline", "Scalable E-commerce Platform")
-                - Include a brief description explaining its purpose and key features
-                - Design a realistic service topology
-                
-                For each missing service position:
-                - Ensure that the missing service placeholder (e.g., "missing_1") appears in the "services" array.
-                - Ensure that the missing service placeholder (e.g., "missing_1") appears in the "connections" array.
-                - Ensure that all the service names and missing service placeholder are in the correct order in the "services" array and the "connections" array.
-                - Place the missing service between existing services in the connections array (e.g., "from": "previous_service", "to": "missing_1").
-                - Include a specific question in each missing service block, formatted in a similar way as: "What is the ideal service for <position>?" (only in a similar way but be creative, no repetitive)
-                - Provide exactly 4 options: 2 correct (with 1 optimal) and 2 incorrect. Please, make sure you are not repeating the same service name in the same four option set.
-                - The optimal choice should randomly vary between cost-efficiency, performance, scalability, or maintainability.
-                - Explain why each option is or isn't suitable.
+                    "role": "system",
+                    "content": f"""You are an Azure architecture expert. Generate realistic Azure architecture scenarios.
 
-                Generate an architecture with exactly {missing_services_count} missing services.
-                """
+For each architecture:
+- Provide a clear name (e.g., "Serverless Data Pipeline", "Scalable E-commerce Platform")
+- Include a brief description explaining its purpose and key features
+- Design a realistic service topology
+
+For each missing service position:
+- Ensure that the missing service placeholder (e.g., "missing_1") appears in the "services" array.
+- Ensure that the missing service placeholder (e.g., "missing_1") appears in the "connections" array.
+- Ensure that all the service names and missing service placeholder are in the correct order in the "services" array and the "connections" array.
+- Place the missing service between existing services in the connections array (e.g., "from": "previous_service", "to": "missing_1").
+- Include a specific question in each missing service block, formatted in a similar way as: "What is the ideal service for <position>?" (only in a similar way but be creative, no repetitive)
+- Provide exactly 4 options: 2 correct (with 1 optimal) and 2 incorrect. Please, make sure you are not repeating the same service name in the same four option set.
+- The optimal choice should randomly vary between cost-efficiency, performance, scalability, or maintainability.
+- Explain why each option is or isn't suitable.
+
+Generate an architecture with exactly {missing_services_count} missing services."""
                 },
                 {
                     "role": "user",
@@ -229,10 +230,7 @@ def generate_architecture(difficulty: str) -> Architecture:
                                             "type": "string",
                                             "enum": ["cost", "performance", "scalability", "maintainability"]
                                         },
-                                        "question": {
-                                            "type": "string",
-                                            "description": "A question prompting the user to identify the missing service"
-                                        },
+                                        "question": {"type": "string"},
                                         "options": {
                                             "type": "array",
                                             "minItems": 4,
@@ -258,15 +256,14 @@ def generate_architecture(difficulty: str) -> Architecture:
             }
         )
 
-        # Parse the OpenAI response
         return json.loads(completion.choices[0].message.content)
-    
+
     except Exception as e:
         print(f"Error generating architecture: {str(e)}")
-        # Fallback response
+
         services = random.sample(list(ACRONYM_MAPPING.keys()), missing_services_count + 1)
         missing_services = random.sample([s for s in ACRONYM_MAPPING.keys() if s not in services], missing_services_count)
-        
+
         return {
             "architecture": {
                 "name": "Fallback Architecture",
@@ -274,12 +271,12 @@ def generate_architecture(difficulty: str) -> Architecture:
             },
             "services": services,
             "connections": [
-                {"from": services[i], "to": services[i+1]} 
-                for i in range(len(services)-1)
+                {"from": services[i], "to": services[i + 1]}
+                for i in range(len(services) - 1)
             ],
             "missingServices": [
                 {
-                    "position": f"Position {i+1}",
+                    "position": f"Position {i + 1}",
                     "optimizationFocus": random.choice(["cost", "performance", "scalability", "maintainability"]),
                     "options": [
                         {
@@ -298,16 +295,14 @@ def generate_architecture(difficulty: str) -> Architecture:
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
     try:
-        # Parse the request body if it exists, otherwise use default difficulty
         body = req.get_json() if req.get_body() else {}
         difficulty = body.get('difficulty', 'BEGINNER').upper()
-        
-        # Validate difficulty level
+
         if difficulty not in ['BEGINNER', 'INTERMEDIATE', 'ADVANCED']:
             difficulty = 'BEGINNER'
-        
+
         architecture = generate_architecture(difficulty)
-        
+
         return func.HttpResponse(
             json.dumps(architecture),
             status_code=200,
@@ -318,7 +313,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 'Access-Control-Allow-Headers': 'Content-Type'
             }
         )
-        
+
     except Exception as e:
         logging.error(f"Error: {str(e)}")
         return func.HttpResponse(

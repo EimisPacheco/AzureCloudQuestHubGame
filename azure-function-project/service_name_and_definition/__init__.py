@@ -1,15 +1,26 @@
 import logging
 import azure.functions as func
-import openai
 import json
 import os
 import random
 from typing import Dict, List, TypedDict
+from openai import AzureOpenAI, OpenAIError  # Azure OpenAI client
+
+# Azure OpenAI config
+ENDPOINT = os.environ["AZURE_OPENAI_ENDPOINT"]
+API_KEY = os.environ["AZURE_OPENAI_API_KEY"]
+API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
+
+# Initialize Azure OpenAI client
+client = AzureOpenAI(
+    azure_endpoint=ENDPOINT,
+    api_key=API_KEY,
+    api_version=API_VERSION,
+)
 
 class AzureService(TypedDict):
     name: str
     description: str
-
 
 SERVICE_DEFINITIONS = {
   "Batch AI": "Provides AI workload orchestration with batch processing capabilities",
@@ -26,19 +37,17 @@ SERVICE_DEFINITIONS = {
   "Cognitive Search": "AI-powered cloud search service for mobile and web app development",
   "Cognitive Services": "Adds AI capabilities to applications through pre-built APIs",
   "Bot Services": "Intelligent, serverless bot service that scales on demand",
-
   "Virtual Machine": "Provides on-demand, scalable computing resources",
   "Kubernetes Services": "Simplifies deploying, managing, and scaling containerized applications",
   "Availability Sets": "Ensures VMs are distributed across multiple isolated hardware nodes",
   "Disks Snapshots": "Point-in-time copies of Azure managed disks",
   "Azure Functions": "Event-driven, serverless compute service",
-  "Batch Accounts": "Runs large-scale parallel and high-performance computing applications"}
+  "Batch Accounts": "Runs large-scale parallel and high-performance computing applications"
+}
 
 def generate_random_services() -> List[AzureService]:
-    openai.api_key = os.environ['OPENAI_API_KEY']
-    
     try:
-        completion = openai.ChatCompletion.create(
+        completion = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {
@@ -71,17 +80,16 @@ def generate_random_services() -> List[AzureService]:
 
         # Parse the OpenAI response
         return json.loads(completion.choices[0].message.content)
-    
+
     except Exception as e:
         logging.error(f"Error generating random services: {str(e)}")
-        # Fallback response
         fallback_services = random.sample(list(SERVICE_DEFINITIONS.items()), 20)
         return [{"service": service, "description": definition} for service, definition in fallback_services]
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
     try:
         random_services = generate_random_services()
-        
+
         return func.HttpResponse(
             json.dumps(random_services),
             status_code=200,
@@ -92,7 +100,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 'Access-Control-Allow-Headers': 'Content-Type'
             }
         )
-        
+
     except Exception as e:
         logging.error(f"Error: {str(e)}")
         return func.HttpResponse(
