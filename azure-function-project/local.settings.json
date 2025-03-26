@@ -1,0 +1,9 @@
+{
+    "IsEncrypted": false,
+    "Values": {
+        "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+        "FUNCTIONS_WORKER_RUNTIME": "python",
+        "OPENAI_API_KEY": "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"
+    },
+    "python_version": "3.11"
+}
