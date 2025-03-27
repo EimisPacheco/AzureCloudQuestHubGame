@@ -6,7 +6,7 @@ import random
 from typing import Dict, List, TypedDict
 from openai import AzureOpenAI, OpenAIError  # Azure OpenAI client
 
-# Azure OpenAI config
+# Azure OpenAI config from environment variables
 ENDPOINT = os.environ["AZURE_OPENAI_ENDPOINT"]
 API_KEY = os.environ["AZURE_OPENAI_API_KEY"]
 API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
