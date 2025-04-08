@@ -3,6 +3,8 @@
 # Inspiration  
 I wanted to create a fun and engaging way for people to learn **Azure cloud concepts** by making the learning process interactive and enjoyable. I mixed my love for learning new skills with my passion for **Cloud architecture** to build a game that helps players practice real-world cloud skills in a playful and memorable way.
 
+See video: https://vimeo.com/manage/videos/1070416234
+
 # What it does  
 **Azure CloudQuest Game** has 5 exciting modes:
 
